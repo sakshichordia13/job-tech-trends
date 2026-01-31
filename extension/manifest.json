@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Job Tech Analyzer",
+  "version": "0.1.0",
+  "description": "Analyze job descriptions for technology frequency.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Analyze this job"
+  },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"]
+}
