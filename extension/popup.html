@@ -34,6 +34,21 @@
         font-size: 12px;
         color: #444;
       }
+      #backendMsg {
+        margin: 4px 0 8px;
+        font-size: 12px;
+        color: #8a3b00;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .section-title {
+        margin-top: 10px;
+        font-size: 12px;
+        font-weight: 600;
+      }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -58,10 +73,17 @@
   </head>
   <body>
     <h1>Job Tech Analyzer</h1>
-    <button id="analyzeBtn">Analyze this job</button>
+    <div class="actions">
+      <button id="analyzeBtn">Analyze this job</button>
+      <button id="trendingBtn">Trending</button>
+    </div>
     <div id="status"></div>
     <div id="source" class="empty"></div>
+    <div id="backendMsg"></div>
     <div id="results"></div>
+    <div class="section-title">Trending (last 7 days)</div>
+    <div id="trendingStatus" class="empty"></div>
+    <div id="trendingResults"></div>
     <script src="popup.js"></script>
   </body>
 </html>

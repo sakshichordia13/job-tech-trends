@@ -1,7 +1,11 @@
 const analyzeBtn = document.getElementById('analyzeBtn');
+const trendingBtn = document.getElementById('trendingBtn');
 const statusEl = document.getElementById('status');
 const sourceEl = document.getElementById('source');
+const backendMsgEl = document.getElementById('backendMsg');
 const resultsEl = document.getElementById('results');
+const trendingStatusEl = document.getElementById('trendingStatus');
+const trendingResultsEl = document.getElementById('trendingResults');
 
 const TECHNOLOGIES = {
   javascript: ['javascript', 'js'],
@@ -54,6 +58,7 @@ const TECHNOLOGIES = {
   kubeflow: ['kubeflow']
 };
 
+// Site-specific selectors (first match wins).
 const JD_SELECTORS = [
   {
     site: 'Workday/Oracle Cloud',
@@ -81,6 +86,7 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Count term occurrences with word-boundary-ish matching.
 function countMatches(text, term) {
   const escaped = escapeRegex(term);
   const pattern = `(?:^|[^\\w])${escaped}(?=[^\\w]|$)`;
@@ -108,49 +114,109 @@ function analyzeText(text) {
     .slice(0, 20);
 }
 
-function renderResults(rows) {
-  resultsEl.innerHTML = '';
+function renderTable(rows, container, emptyText, headers) {
+  container.innerHTML = '';
 
   if (!rows.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'No technologies found in the page text.';
-    resultsEl.appendChild(empty);
+    empty.textContent = emptyText;
+    container.appendChild(empty);
     return;
   }
 
   const table = document.createElement('table');
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
-  const thTech = document.createElement('th');
-  thTech.textContent = 'Technology';
-  const thCount = document.createElement('th');
-  thCount.textContent = 'Count';
-  headerRow.appendChild(thTech);
-  headerRow.appendChild(thCount);
+  headers.forEach((label) => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    headerRow.appendChild(th);
+  });
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  rows.forEach(([tech, count]) => {
-    const row = document.createElement('tr');
-    const techCell = document.createElement('td');
-    techCell.textContent = tech;
-    const countCell = document.createElement('td');
-    countCell.textContent = String(count);
-    row.appendChild(techCell);
-    row.appendChild(countCell);
-    tbody.appendChild(row);
+  rows.forEach((row) => {
+    const rowEl = document.createElement('tr');
+    row.forEach((cell) => {
+      const cellEl = document.createElement('td');
+      cellEl.textContent = String(cell);
+      rowEl.appendChild(cellEl);
+    });
+    tbody.appendChild(rowEl);
   });
   table.appendChild(tbody);
 
-  resultsEl.appendChild(table);
+  container.appendChild(table);
+}
+
+function renderResults(rows) {
+  renderTable(rows, resultsEl, 'No technologies found in the page text.', [
+    'Technology',
+    'Count'
+  ]);
+}
+
+function renderTrends(rows) {
+  renderTable(rows, trendingResultsEl, 'No trend data yet.', ['Technology', 'Total']);
+}
+
+// Best-effort send to backend without blocking the UI.
+async function postIngest(techRows, url) {
+  try {
+    const payload = {
+      url,
+      capturedAt: new Date().toISOString(),
+      tech: techRows.map(([name, count]) => ({ name, count }))
+    };
+
+    const response = await fetch('http://localhost:3001/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      backendMsgEl.textContent = 'Backend not running.';
+      return;
+    }
+
+    backendMsgEl.textContent = '';
+  } catch (error) {
+    backendMsgEl.textContent = 'Backend not running.';
+  }
+}
+
+async function fetchTrends() {
+  trendingStatusEl.textContent = 'Loading trends...';
+  trendingBtn.disabled = true;
+
+  try {
+    const response = await fetch('http://localhost:3001/trends?days=7&limit=20');
+    if (!response.ok) {
+      trendingStatusEl.textContent = 'Backend not running.';
+      return;
+    }
+
+    const data = await response.json();
+    const rows = Array.isArray(data.top)
+      ? data.top.map((entry) => [entry.tech, entry.total])
+      : [];
+    trendingStatusEl.textContent = '';
+    renderTrends(rows);
+  } catch (error) {
+    trendingStatusEl.textContent = 'Backend not running.';
+  } finally {
+    trendingBtn.disabled = false;
+  }
 }
 
 async function analyzeActiveTab() {
   statusEl.textContent = 'Analyzing page...';
   analyzeBtn.disabled = true;
   sourceEl.textContent = '';
+  backendMsgEl.textContent = '';
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -162,6 +228,7 @@ async function analyzeActiveTab() {
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: (selectors) => {
+        // Use the first matching job description container.
         for (const entry of selectors) {
           const el = document.querySelector(entry.selector);
           if (el && el.innerText) {
@@ -185,6 +252,9 @@ async function analyzeActiveTab() {
     statusEl.textContent = `Found ${rows.length} technologies.`;
     sourceEl.textContent = `Source: ${source}`;
     renderResults(rows);
+    if (tab.url) {
+      postIngest(rows, tab.url);
+    }
   } catch (error) {
     statusEl.textContent = 'Failed to analyze this page.';
   } finally {
@@ -193,3 +263,4 @@ async function analyzeActiveTab() {
 }
 
 analyzeBtn.addEventListener('click', analyzeActiveTab);
+trendingBtn.addEventListener('click', fetchTrends);
