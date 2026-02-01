@@ -1,5 +1,6 @@
 const analyzeBtn = document.getElementById('analyzeBtn');
 const statusEl = document.getElementById('status');
+const sourceEl = document.getElementById('source');
 const resultsEl = document.getElementById('results');
 
 const TECHNOLOGIES = {
@@ -52,6 +53,29 @@ const TECHNOLOGIES = {
   databricks: ['databricks'],
   kubeflow: ['kubeflow']
 };
+
+const JD_SELECTORS = [
+  {
+    site: 'Workday/Oracle Cloud',
+    selector:
+      '[data-automation-id="jobDescription"]'
+  },
+  {
+    site: 'Greenhouse',
+    selector:
+      '#content, .content, .section-wrapper, .opening, .opening-section'
+  },
+  {
+    site: 'Lever',
+    selector:
+      '.posting-description, .content, .postings-apply .content'
+  },
+  {
+    site: 'LinkedIn',
+    selector:
+      '.show-more-less-html__markup, .description__text, .jobs-description__content, .jobs-box__html-content'
+  }
+];
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -126,6 +150,7 @@ function renderResults(rows) {
 async function analyzeActiveTab() {
   statusEl.textContent = 'Analyzing page...';
   analyzeBtn.disabled = true;
+  sourceEl.textContent = '';
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -136,11 +161,29 @@ async function analyzeActiveTab() {
 
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => document.body.innerText
+      func: (selectors) => {
+        for (const entry of selectors) {
+          const el = document.querySelector(entry.selector);
+          if (el && el.innerText) {
+            return {
+              text: el.innerText,
+              source: `${entry.site} (${entry.selector})`
+            };
+          }
+        }
+        return {
+          text: document.body ? document.body.innerText : '',
+          source: 'document.body.innerText'
+        };
+      },
+      args: [JD_SELECTORS]
     });
 
-    const rows = analyzeText(result || '');
+    const text = result && result.text ? result.text : '';
+    const source = result && result.source ? result.source : 'document.body.innerText';
+    const rows = analyzeText(text);
     statusEl.textContent = `Found ${rows.length} technologies.`;
+    sourceEl.textContent = `Source: ${source}`;
     renderResults(rows);
   } catch (error) {
     statusEl.textContent = 'Failed to analyze this page.';
